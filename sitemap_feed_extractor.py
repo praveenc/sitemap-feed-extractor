@@ -57,10 +57,10 @@ import json
 import re
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from io import BytesIO
-from typing import Iterator
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -89,10 +89,7 @@ NEWS_TITLE_TAG = f"{{{NEWS_NS}}}title"
 NEWS_PUB_TAG = f"{{{NEWS_NS}}}publication"
 NEWS_PUB_NAME_TAG = f"{{{NEWS_NS}}}name"
 
-USER_AGENT = (
-    "Mozilla/5.0 (compatible; SitemapExtractor/1.0; "
-    "+https://github.com/llm-utility-scripts)"
-)
+USER_AGENT = "Mozilla/5.0 (compatible; SitemapExtractor/1.0; +https://github.com/llm-utility-scripts)"
 REQUEST_TIMEOUT = 30
 MAX_EXPAND_MONTHS = 120  # go back up to 10 years
 MAX_RECURSION_DEPTH = 10  # max sitemap index nesting
@@ -115,9 +112,11 @@ console = Console()
 
 # ── Data types ───────────────────────────────────────────────────────────────
 
+
 @dataclass(slots=True, frozen=True)
 class SitemapEntry:
     """A single <url> entry from a sitemap."""
+
     loc: str
     lastmod: date | None
     priority: float | None
@@ -129,6 +128,7 @@ class SitemapEntry:
 @dataclass
 class FetchStats:
     """Track fetch statistics for the summary panel."""
+
     sitemaps_fetched: int = 0
     total_bytes: int = 0
     total_time: float = 0.0
@@ -137,15 +137,21 @@ class FetchStats:
 
 # ── Parsing helpers ──────────────────────────────────────────────────────────
 
+
 def parse_lastmod(raw: str) -> date | None:
     """Parse a lastmod string — handles ISO-8601 datetime, date-only, and common variants."""
     if not raw:
         return None
     raw = raw.strip()
     # Try date-only first (most common in sitemaps)
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S",
-                "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%f%z",
-                "%Y-%m-%dT%H:%M:%S.%fZ"):
+    for fmt in (
+        "%Y-%m-%d",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S.%f%z",
+        "%Y-%m-%dT%H:%M:%S.%fZ",
+    ):
         try:
             return datetime.strptime(raw, fmt).date()
         except ValueError:
@@ -162,6 +168,7 @@ def parse_rfc2822_date(raw: str) -> date | None:
     if not raw:
         return None
     from email.utils import parsedate_to_datetime
+
     try:
         return parsedate_to_datetime(raw.strip()).date()
     except (ValueError, TypeError):
@@ -187,6 +194,7 @@ def _get_el_text(parent: ET.Element, tag: str) -> str | None:  # type: ignore[na
 
 
 # ── Fetching ─────────────────────────────────────────────────────────────────
+
 
 def fetch_sitemap_bytes(url: str, stats: FetchStats) -> bytes | None:
     """
@@ -215,7 +223,7 @@ def fetch_sitemap_bytes(url: str, stats: FetchStats) -> bytes | None:
     stats.total_time += elapsed
 
     # Decompress .xml.gz if needed (content-level gzip, not transport-level)
-    if url.endswith('.gz') or _is_gzipped(content):
+    if url.endswith(".gz") or _is_gzipped(content):
         try:
             content = gzip.decompress(content)
         except gzip.BadGzipFile:
@@ -230,10 +238,11 @@ def fetch_sitemap_bytes(url: str, stats: FetchStats) -> bytes | None:
 
 def _is_gzipped(data: bytes) -> bool:
     """Check if data starts with gzip magic bytes."""
-    return len(data) >= 2 and data[0:2] == b'\x1f\x8b'
+    return len(data) >= 2 and data[0:2] == b"\x1f\x8b"
 
 
 # ── XML Parsing (error-tolerant) ─────────────────────────────────────────────
+
 
 def _safe_parse_xml(xml_bytes: bytes, source_url: str) -> ET.Element | None:  # type: ignore[name-defined]
     """
@@ -245,7 +254,7 @@ def _safe_parse_xml(xml_bytes: bytes, source_url: str) -> ET.Element | None:  # 
         return tree.getroot()
     except ET.ParseError:
         # Try to recover truncated XML by brute-force closing the root tag
-        for close_tag in (b'</urlset>', b'</sitemapindex>'):
+        for close_tag in (b"</urlset>", b"</sitemapindex>"):
             try:
                 patched = xml_bytes + close_tag
                 tree = ET.parse(BytesIO(patched))
@@ -299,6 +308,7 @@ def iter_entries_from_xml(xml_bytes: bytes, source_url: str) -> Iterator[Sitemap
 
 DC_NS = "http://purl.org/dc/elements/1.1/"
 
+
 def _parse_rss_entries(root: ET.Element) -> list[SitemapEntry]:  # type: ignore[name-defined]
     """Parse RSS 2.0 <channel><item> elements into SitemapEntry objects."""
     entries: list[SitemapEntry] = []
@@ -310,13 +320,15 @@ def _parse_rss_entries(root: ET.Element) -> list[SitemapEntry]:  # type: ignore[
         link = _get_el_text(item, "link")
         if not link:
             continue
-        entries.append(SitemapEntry(
-            loc=link,
-            lastmod=parse_rfc2822_date(_get_el_text(item, "pubDate") or ""),
-            priority=None,
-            news_title=_get_el_text(item, "title"),
-            news_publication=_get_el_text(item, f"{{{DC_NS}}}creator"),
-        ))
+        entries.append(
+            SitemapEntry(
+                loc=link,
+                lastmod=parse_rfc2822_date(_get_el_text(item, "pubDate") or ""),
+                priority=None,
+                news_title=_get_el_text(item, "title"),
+                news_publication=_get_el_text(item, f"{{{DC_NS}}}creator"),
+            ),
+        )
     return entries
 
 
@@ -333,18 +345,23 @@ def _parse_atom_entries(root: ET.Element) -> list[SitemapEntry]:  # type: ignore
             continue
 
         # Prefer <updated>, fall back to <published>
-        date_str = _get_el_text(entry_el, f"{ns}updated") or _get_el_text(entry_el, f"{ns}published")
+        date_str = _get_el_text(entry_el, f"{ns}updated") or _get_el_text(
+            entry_el,
+            f"{ns}published",
+        )
         # Author
         author_el = entry_el.find(f"{ns}author")
         author_name = _get_el_text(author_el, f"{ns}name") if author_el is not None else None
 
-        entries.append(SitemapEntry(
-            loc=href,
-            lastmod=parse_lastmod(date_str or ""),
-            priority=None,
-            news_title=_get_el_text(entry_el, f"{ns}title"),
-            news_publication=author_name,
-        ))
+        entries.append(
+            SitemapEntry(
+                loc=href,
+                lastmod=parse_lastmod(date_str or ""),
+                priority=None,
+                news_title=_get_el_text(entry_el, f"{ns}title"),
+                news_publication=author_name,
+            ),
+        )
     return entries
 
 
@@ -364,6 +381,7 @@ def _detect_format(root: ET.Element) -> str:  # type: ignore[name-defined]
 
 # ── Sitemap Index Handling (recursive) ───────────────────────────────────────
 
+
 def _get_child_sitemap_urls(root: ET.Element) -> list[str]:  # type: ignore[name-defined]
     """Extract child sitemap URLs from a sitemap index root element."""
     urls: list[str] = []
@@ -375,14 +393,20 @@ def _get_child_sitemap_urls(root: ET.Element) -> list[str]:  # type: ignore[name
 
 
 def collect_entries_recursive(
-    url: str, stats: FetchStats, *, depth: int = 0
+    url: str,
+    stats: FetchStats,
+    *,
+    depth: int = 0,
 ) -> list[SitemapEntry]:
     """
     Fetch a sitemap URL and collect entries. If it's a sitemap index,
     recurse into children (up to MAX_RECURSION_DEPTH).
     """
     if depth > MAX_RECURSION_DEPTH:
-        console.print(f"[yellow]⚠ Max depth reached, skipping {url}[/yellow]", highlight=False)
+        console.print(
+            f"[yellow]⚠ Max depth reached, skipping {url}[/yellow]",
+            highlight=False,
+        )
         return []
 
     xml_bytes = fetch_sitemap_bytes(url, stats)
@@ -436,18 +460,21 @@ def collect_entries_recursive(
                 if news_date_str:
                     lastmod = parse_lastmod(news_date_str)
 
-        entries.append(SitemapEntry(
-            loc=loc_text,
-            lastmod=lastmod,
-            priority=parse_priority(_get_el_text(url_el, PRIORITY_TAG)),
-            changefreq=_get_el_text(url_el, CHANGEFREQ_TAG),
-            news_title=news_title,
-            news_publication=news_pub_name,
-        ))
+        entries.append(
+            SitemapEntry(
+                loc=loc_text,
+                lastmod=lastmod,
+                priority=parse_priority(_get_el_text(url_el, PRIORITY_TAG)),
+                changefreq=_get_el_text(url_el, CHANGEFREQ_TAG),
+                news_title=news_title,
+                news_publication=news_pub_name,
+            ),
+        )
     return entries
 
 
 # ── Sitemap Discovery ────────────────────────────────────────────────────────
+
 
 def discover_sitemaps_from_homepage(homepage_url: str, stats: FetchStats) -> list[str]:
     """
@@ -473,7 +500,7 @@ def discover_sitemaps_from_homepage(homepage_url: str, stats: FetchStats) -> lis
         )
         if resp.ok:
             for line in resp.text.splitlines():
-                match = re.match(r'^sitemap:\s*(.+)$', line.strip(), re.IGNORECASE)
+                match = re.match(r"^sitemap:\s*(.+)$", line.strip(), re.IGNORECASE)
                 if match:
                     sitemap_url = match.group(1).strip()
                     if sitemap_url.startswith("http"):
@@ -508,7 +535,13 @@ def discover_sitemaps_from_homepage(homepage_url: str, stats: FetchStats) -> lis
 
 # ── Main Collection Entry Point ──────────────────────────────────────────────
 
-def collect_all_entries(url: str, stats: FetchStats, *, discover: bool = False) -> list[SitemapEntry]:
+
+def collect_all_entries(
+    url: str,
+    stats: FetchStats,
+    *,
+    discover: bool = False,
+) -> list[SitemapEntry]:
     """
     Fetch sitemap(s) and return all SitemapEntry objects.
 
@@ -531,11 +564,11 @@ def collect_all_entries(url: str, stats: FetchStats, *, discover: bool = False) 
                 seen.add(e.loc)
                 deduped.append(e)
         return deduped
-    else:
-        return collect_entries_recursive(url, stats)
+    return collect_entries_recursive(url, stats)
 
 
 # ── Filtering ────────────────────────────────────────────────────────────────
+
 
 def filter_by_route(entries: list[SitemapEntry], route: str) -> list[SitemapEntry]:
     """
@@ -543,10 +576,12 @@ def filter_by_route(entries: list[SitemapEntry], route: str) -> list[SitemapEntr
     Excludes the bare section index (e.g. /blog itself when route="blog").
 
     The match is case-insensitive and checks the path portion of the URL.
+
     Examples:
       route="blog"      matches /blog/my-post, /en/blog/post  (NOT /blog or /blog/)
       route="blog/2026" matches /blog/2026/my-post
       route="docs"      matches /docs/api/reference  (NOT /docs or /docs/)
+
     """
     # Normalize: strip leading/trailing slashes for consistent matching
     route_lower = route.strip("/").lower()
@@ -559,7 +594,7 @@ def filter_by_route(entries: list[SitemapEntry], route: str) -> list[SitemapEntr
             continue
         # Find where the route ends in the path
         idx = parsed_path.find(route_lower)
-        remainder = parsed_path[idx + len(route_lower):]
+        remainder = parsed_path[idx + len(route_lower) :]
         # Exclude bare section index: remainder must have real content after the route
         # e.g. "/blog" → remainder="" (excluded), "/blog/my-post" → remainder="/my-post" (kept)
         remainder = remainder.strip("/")
@@ -579,7 +614,11 @@ def prev_month(y: int, m: int) -> tuple[int, int]:
     return y, m - 1
 
 
-def filter_top_n(entries: list[SitemapEntry], n: int, start: date) -> list[SitemapEntry]:
+def filter_top_n(
+    entries: list[SitemapEntry],
+    n: int,
+    start: date,
+) -> list[SitemapEntry]:
     """
     Grab top N entries by expanding backward from `start` month-by-month.
 
@@ -597,7 +636,9 @@ def filter_top_n(entries: list[SitemapEntry], n: int, start: date) -> list[Sitem
 
     if not dated:
         # No dates at all — just return first N entries (or all undated)
-        console.print("[yellow]No <lastmod> dates found — returning first N entries[/yellow]")
+        console.print(
+            "[yellow]No <lastmod> dates found — returning first N entries[/yellow]",
+        )
         return undated[:n]
 
     # Expand month-by-month from start
@@ -607,10 +648,7 @@ def filter_top_n(entries: list[SitemapEntry], n: int, start: date) -> list[Sitem
     for _ in range(MAX_EXPAND_MONTHS):
         ms = month_start(y, m)
         # Entries in this month: lastmod year-month matches
-        month_entries = [
-            e for e in dated
-            if e.lastmod is not None and e.lastmod.year == y and e.lastmod.month == m
-        ]
+        month_entries = [e for e in dated if e.lastmod is not None and e.lastmod.year == y and e.lastmod.month == m]
         # Sort by date descending, then by priority descending within same date
         month_entries.sort(
             key=lambda e: (e.lastmod, e.priority if e.priority is not None else 0.0),  # type: ignore[arg-type]
@@ -636,18 +674,18 @@ def filter_top_n(entries: list[SitemapEntry], n: int, start: date) -> list[Sitem
 
 
 def filter_date_range(
-    entries: list[SitemapEntry], from_date: date, to_date: date
+    entries: list[SitemapEntry],
+    from_date: date,
+    to_date: date,
 ) -> list[SitemapEntry]:
     """Return entries with lastmod between from_date and to_date (inclusive), sorted descending."""
-    filtered = [
-        e for e in entries
-        if e.lastmod is not None and from_date <= e.lastmod <= to_date
-    ]
+    filtered = [e for e in entries if e.lastmod is not None and from_date <= e.lastmod <= to_date]
     filtered.sort(key=lambda e: e.lastmod, reverse=True)  # type: ignore[arg-type]
     return filtered
 
 
 # ── Output ───────────────────────────────────────────────────────────────────
+
 
 def display_results(entries: list[SitemapEntry]) -> None:
     """Print a Rich table of the extracted entries."""
@@ -702,6 +740,7 @@ def output_urls_only(entries: list[SitemapEntry]) -> str:
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Extract URLs from sitemaps with smart date filtering",
@@ -736,11 +775,15 @@ Examples:
   uv run sitemap/sitemap_feed_extractor.py https://example.com/sitemap.xml --top 10 --urls-only
 """,
     )
-    parser.add_argument("sitemap_url", help="URL of sitemap.xml, RSS feed, or Atom feed (or homepage with --discover)")
+    parser.add_argument(
+        "sitemap_url",
+        help="URL of sitemap.xml, RSS feed, or Atom feed (or homepage with --discover)",
+    )
 
     mode = parser.add_argument_group("Filter mode (choose one)")
     mode.add_argument(
-        "--top", "-n",
+        "--top",
+        "-n",
         type=int,
         metavar="N",
         help="Get the N most recent URLs (expands backward month-by-month)",
@@ -762,7 +805,8 @@ Examples:
 
     opts = parser.add_argument_group("Options")
     opts.add_argument(
-        "--route", "-r",
+        "--route",
+        "-r",
         type=str,
         metavar="PATH",
         help="Filter URLs by path substring (e.g. 'blog', 'docs/api', 'news')",
@@ -790,7 +834,8 @@ Examples:
         help="Output only URLs, one per line (no table)",
     )
     opts.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=str,
         metavar="FILE",
         help="Save URLs to a file (one per line)",
@@ -803,7 +848,9 @@ def parse_date_arg(value: str, label: str) -> date:
     try:
         return datetime.strptime(value, "%Y-%m-%d").date()
     except ValueError:
-        console.print(f"[red]Invalid date for {label}: {value!r} (expected YYYY-MM-DD)[/red]")
+        console.print(
+            f"[red]Invalid date for {label}: {value!r} (expected YYYY-MM-DD)[/red]",
+        )
         sys.exit(1)
 
 
@@ -818,7 +865,9 @@ def main() -> None:
     has_route = args.route is not None
 
     if not has_top and not has_from and not has_route:
-        console.print("[red]Specify either --top N, --from YYYY-MM-DD, or --route PATH[/red]")
+        console.print(
+            "[red]Specify either --top N, --from YYYY-MM-DD, or --route PATH[/red]",
+        )
         parser.print_help()
         sys.exit(1)
 
@@ -837,7 +886,7 @@ def main() -> None:
 
     # Banner — one compact line
     console.print()
-    parts = [f"[bold]Sitemap & Feed Extractor[/bold]"]
+    parts = ["[bold]Sitemap & Feed Extractor[/bold]"]
     if has_top:
         parts.append(f"top {args.top} from {start}")
     elif has_from:
@@ -854,7 +903,11 @@ def main() -> None:
     # Fetch & parse
     stats = FetchStats()
     try:
-        all_entries = collect_all_entries(args.sitemap_url, stats, discover=args.discover)
+        all_entries = collect_all_entries(
+            args.sitemap_url,
+            stats,
+            discover=args.discover,
+        )
     except requests.RequestException as exc:
         console.print(f"[red]Failed to fetch sitemap: {exc}[/red]")
         sys.exit(1)

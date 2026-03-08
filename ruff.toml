@@ -1,0 +1,27 @@
+# Ruff configuration for sitemap-feed-extractor
+# https://docs.astral.sh/ruff/configuration/
+
+target-version = "py313"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "D",        # pydocstyle — too opinionated for a utility script
+    "N817",     # CamelCase import as acronym (ET is idiomatic for ElementTree)
+    "C901",     # function complexity — these parsers are inherently branchy
+    "PLR0911",  # too many return statements
+    "PLR0912",  # too many branches
+    "PLR0915",  # too many statements
+    "PLR2004",  # magic value comparisons
+    "DTZ",      # datetime timezone warnings — dates here are always date-only
+    "PERF203",  # try-except in loop — acceptable for format-guessing loops
+    "PLC0415",  # import not at top level — lazy imports are intentional
+    "TC003",    # type-checking block — not worth the complexity here
+    "ARG001",   # unused function argument — stats is part of the interface
+    "SIM105",   # contextlib.suppress — try/except is clearer in this context
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
