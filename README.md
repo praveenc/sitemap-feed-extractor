@@ -10,13 +10,13 @@ Sitemaps can contain thousands of entries. Instead of dumping the entire XML int
 
 **Date range mode** (`--from` / `--to`): Returns all entries within a specific date range.
 
-**Route filtering** (`--route`): Pre-filters entries by URL path substring before applying date/top-N logic. Excludes the bare section index (e.g. `/blog` itself). Essential for sitemaps without `<lastmod>` dates where you only want a specific section (e.g. `--route blog` to get only blog posts, not static pages like `/about` or `/settings`).
+**Route filtering** (`--route`): Pre-filters entries by URL path substring before applying date/top-N logic. Excludes the bare section index (e.g. `/blog` itself). Essential for sitemaps without `<lastmod>` dates where you only want a specific section (e.g. `--route blog` to get only blog posts, not static pages like `/about` or `/settings`). When used alone (without `--top` or `--from`), returns **all** matching entries — no need to guess the count.
 
 ## Features
 
 | Feature | Description |
 |---------|-------------|
-| **Route filtering** | `--route` pre-filters URLs by path before date logic is applied |
+| **Route filtering** | `--route` pre-filters URLs by path before date logic; standalone returns all matches |
 | **RSS 2.0 feeds** | Auto-detected; parses `<item>` with `<pubDate>`, title, author |
 | **Atom feeds** | Auto-detected; parses `<entry>` with `<updated>`, title, author |
 | **Smart date expansion** | Month-by-month backward scan — only fetches what's needed |
@@ -36,6 +36,9 @@ uv run sitemap/sitemap_feed_extractor.py https://example.com/sitemap.xml --top 1
 
 # Filter by route — only blog posts from the sitemap
 uv run sitemap/sitemap_feed_extractor.py https://windsurf.com/sitemap.xml --top 10 --route blog
+
+# Get ALL URLs matching a route (no --top needed — returns every match)
+uv run sitemap/sitemap_feed_extractor.py https://platform.claude.com/sitemap.xml --route agent-sdk
 
 # Combine route + date range
 uv run sitemap/sitemap_feed_extractor.py https://example.com/sitemap.xml --from 2026-01-01 --to 2026-03-07 --route docs
@@ -68,7 +71,7 @@ uv run sitemap/sitemap_feed_extractor.py https://github.com/astral-sh/uv/release
 | Option | Description |
 |--------|-------------|
 | `--top N`, `-n N` | Get the N most recent URLs |
-| `--route PATH`, `-r PATH` | Filter URLs by path substring (e.g. `blog`, `docs/api`, `news`) |
+| `--route PATH`, `-r PATH` | Filter URLs by path substring; can be used alone to get all matches, or combined with `--top`/`--from` |
 | `--from YYYY-MM-DD` | Start of date range (inclusive) |
 | `--to YYYY-MM-DD` | End of date range (inclusive, defaults to today) |
 | `--discover` | Treat URL as homepage — find sitemaps via robots.txt + common paths |

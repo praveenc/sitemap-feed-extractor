@@ -35,6 +35,7 @@ Date range mode (--from / --to):
 Route filtering (--route):
   Pre-filter entries by URL path before applying date/top-N logic.
   Only entries whose URL path contains the route substring are kept.
+  Can be used standalone (without --top or --from) to return ALL matching entries.
   Useful when sitemaps lack dates and you want a specific section (e.g. /blog/).
 
 Usage:
@@ -713,6 +714,9 @@ Examples:
   # Filter by route — only URLs containing /blog/ in their path
   uv run sitemap/sitemap_feed_extractor.py https://windsurf.com/sitemap.xml --top 10 --route blog
 
+  # Get ALL URLs matching a route (no --top needed)
+  uv run sitemap/sitemap_feed_extractor.py https://example.com/sitemap.xml --route docs/api
+
   # Auto-discover sitemaps from a homepage
   uv run sitemap/sitemap_feed_extractor.py https://example.com --top 10 --discover
 
@@ -811,9 +815,10 @@ def main() -> None:
     has_top = args.top is not None
     has_from = args.from_date is not None
     has_to = args.to_date is not None
+    has_route = args.route is not None
 
-    if not has_top and not has_from:
-        console.print("[red]Specify either --top N or --from YYYY-MM-DD[/red]")
+    if not has_top and not has_from and not has_route:
+        console.print("[red]Specify either --top N, --from YYYY-MM-DD, or --route PATH[/red]")
         parser.print_help()
         sys.exit(1)
 
@@ -826,7 +831,7 @@ def main() -> None:
 
     if has_top:
         start = parse_date_arg(args.start_date, "--start-date") if args.start_date else today
-    else:
+    elif has_from:
         from_date = parse_date_arg(args.from_date, "--from")
         to_date = parse_date_arg(args.to_date, "--to") if has_to else today
 
@@ -835,8 +840,10 @@ def main() -> None:
     parts = [f"[bold]Sitemap & Feed Extractor[/bold]"]
     if has_top:
         parts.append(f"top {args.top} from {start}")
-    else:
+    elif has_from:
         parts.append(f"{from_date} → {to_date}")
+    else:
+        parts.append("all matching entries")
     if args.route:
         parts.append(f"route='{args.route}'")
     if args.discover:
@@ -875,11 +882,20 @@ def main() -> None:
             console.print(f"[yellow]No URLs match route '{args.route}'[/yellow]")
             sys.exit(0)
 
-    # Filter by date or top-N
+    # Filter by date or top-N (or return all if route-only mode)
     if has_top:
         results = filter_top_n(all_entries, args.top, start)
-    else:
+    elif has_from:
         results = filter_date_range(all_entries, from_date, to_date)
+    else:
+        # Route-only mode: return all route-matched entries, sorted by date descending
+        dated = sorted(
+            [e for e in all_entries if e.lastmod is not None],
+            key=lambda e: e.lastmod,  # type: ignore[arg-type]
+            reverse=True,
+        )
+        undated = [e for e in all_entries if e.lastmod is None]
+        results = dated + undated
 
     if not results:
         console.print("[yellow]No URLs matched the filter criteria.[/yellow]")
