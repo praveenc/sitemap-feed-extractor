@@ -28,41 +28,69 @@ First, detect your environment:
 test -f /.dockerenv && echo 'INSIDE_CONTAINER' || echo 'ON_HOST'
 ```
 
-- **ON_HOST**: Prefix all git/gh commands with `docker exec my-git-workspace` and use `-C /workspace/repos/local-llm-ui` for git commands.
+- **ON_HOST**: Prefix all git/gh commands with `docker exec my-git-workspace` and use `-C <REPO_PATH>` for git commands.
 - **INSIDE_CONTAINER**: Run git/gh commands directly (no prefix needed).
 
 ## Container Constants
 - Container name: `my-git-workspace`
-- Repo path inside container: `/workspace/repos/local-llm-ui`
-- GitHub repo: `praveenc/local-llm-ui`
+- Repos root inside container: `/workspace/repos/`
+
+## CRITICAL: Repo Path Discovery
+
+**NEVER hardcode a repo path.** Always discover it dynamically from the task context.
+
+1. Extract the repo directory from the path provided in the task (e.g. `/Users/user/dev/repos/my-project` → repo name is `my-project`)
+2. Verify it exists inside the container:
+   ```bash
+   docker exec my-git-workspace ls /workspace/repos/ | head -20
+   ```
+3. Find the matching repo:
+   ```bash
+   docker exec my-git-workspace test -d /workspace/repos/<REPO_NAME>/.git && echo 'FOUND' || echo 'NOT FOUND'
+   ```
+4. If not found, list available repos and ask the user which one to use.
+5. Store the discovered path in a variable and use it for ALL subsequent commands:
+   ```bash
+   REPO_PATH="/workspace/repos/<REPO_NAME>"
+   ```
 
 ## Before Any Operation
 1. Verify the container is running: `docker ps --filter name=my-git-workspace --format '{{.Names}}'`
 2. If not running, start it: `docker compose run -d --rm --name my-git-workspace git-workspace`
-3. Verify git identity: `docker exec -w /workspace/repos/local-llm-ui my-git-workspace git-test`
+3. Discover the repo path (see above)
+4. Verify git identity: `docker exec -w $REPO_PATH my-git-workspace git config user.name && docker exec -w $REPO_PATH my-git-workspace git config user.email`
 
 ## Command Templates (Host Mode)
+Replace `$REPO_PATH` with the discovered path (e.g. `/workspace/repos/sitemap-feed-extractor`):
+
 ```bash
 # Status
-docker exec my-git-workspace git -C /workspace/repos/local-llm-ui status
+docker exec my-git-workspace git -C $REPO_PATH status
 
 # Stage all (respects .gitignore — NEVER use -f)
-docker exec my-git-workspace git -C /workspace/repos/local-llm-ui add -A
+docker exec my-git-workspace git -C $REPO_PATH add -A
+
+# Stage specific files
+docker exec my-git-workspace git -C $REPO_PATH add <file1> <file2>
 
 # Commit (use Conventional Commits: feat, fix, refactor, chore, docs)
-docker exec my-git-workspace git -C /workspace/repos/local-llm-ui commit -m "type(scope): message"
+docker exec my-git-workspace git -C $REPO_PATH commit -m "type(scope): message"
 
 # Push
-docker exec my-git-workspace git -C /workspace/repos/local-llm-ui push origin main
+docker exec my-git-workspace git -C $REPO_PATH push origin main
 
 # Tag
-docker exec my-git-workspace git -C /workspace/repos/local-llm-ui tag -a vX.Y.Z -m "Release vX.Y.Z"
+docker exec my-git-workspace git -C $REPO_PATH tag -a vX.Y.Z -m "Release vX.Y.Z"
 
 # Push with tags
-docker exec my-git-workspace git -C /workspace/repos/local-llm-ui push origin main --tags
+docker exec my-git-workspace git -C $REPO_PATH push origin main --tags
 
-# GitHub release
-docker exec my-git-workspace gh release create vX.Y.Z --repo praveenc/local-llm-ui --title "vX.Y.Z" --notes "Release notes"
+# Detect GitHub repo from remote
+docker exec my-git-workspace git -C $REPO_PATH remote get-url origin
+
+# GitHub release (detect repo from remote, don't hardcode)
+GH_REPO=$(docker exec my-git-workspace git -C $REPO_PATH remote get-url origin | sed 's|.*github.com[:/]||;s|\.git$||')
+docker exec my-git-workspace gh release create vX.Y.Z --repo $GH_REPO --title "vX.Y.Z" --notes "Release notes"
 ```
 
 ## Commit Convention
@@ -85,13 +113,14 @@ Examples:
 - `chore: add .env.template`
 
 ## Workflow
-1. Always run `git status` first to see what changed
-2. Show the user what will be committed
-3. Stage changes with `git add -A` (respects .gitignore — NEVER use -f)
-4. **Run the sensitive files check** (see Security Rules #3)
-5. Commit with a descriptive conventional commit message
-6. Only push if explicitly asked
-7. Only tag/release if explicitly asked
+1. Discover the repo path inside the container (NEVER skip this)
+2. Always run `git status` first to see what changed
+3. Show the user what will be committed
+4. Stage changes with `git add -A` (respects .gitignore — NEVER use -f)
+5. **Run the sensitive files check** (see Security Rules #3)
+6. Commit with a descriptive conventional commit message
+7. Only push if explicitly asked
+8. Only tag/release if explicitly asked
 
 ## Deciding Scope
 
